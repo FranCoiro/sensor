@@ -1,16 +1,7 @@
 {
-  "name": "sensor-data-api",
-  "version": "1.0.0",
-  "description": "API para analizar datos de sensores usando funciones serverless en Vercel",
-  "main": "index.js",
-  "scripts": {
-    "start": "node index.js"
-  },
   "dependencies": {
-    "express": "^4.18.1",
-    "multer": "^1.4.4",
-    "papaparse": "^5.3.0"
-  },
-  "author": "Tu Nombre",
-  "license": "ISC"
+    "express": "^4.18.2",
+    "multer": "^1.4.5-lts.1",
+    "papaparse": "^5.4.1"
+  }
 }
