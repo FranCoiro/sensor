@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Subir CSV</title>
+    <title>Test de API de Sensores</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -14,29 +14,26 @@
         .container {
             border: 2px dashed #ccc;
             padding: 20px;
-            text-align: center;
             margin-top: 20px;
         }
-        .result {
-            margin-top: 20px;
+        pre {
+            background: #f5f5f5;
             padding: 10px;
-            border: 1px solid #ccc;
-            display: none;
+            overflow-x: auto;
         }
         .error {
             color: red;
-            margin-top: 10px;
-            display: none;
+            margin: 10px 0;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h2>Subir archivo CSV</h2>
+        <h2>Test de API de Sensores</h2>
         <input type="file" id="csvFile" accept=".csv">
-        <button onclick="uploadFile()">Subir archivo</button>
+        <button onclick="uploadFile()">Procesar archivo</button>
         <div id="error" class="error"></div>
-        <div id="result" class="result"></div>
+        <pre id="result"></pre>
     </div>
 
     <script>
@@ -45,12 +42,11 @@
             const errorDiv = document.getElementById('error');
             const resultDiv = document.getElementById('result');
             
-            errorDiv.style.display = 'none';
-            resultDiv.style.display = 'none';
+            errorDiv.textContent = '';
+            resultDiv.textContent = '';
 
             if (!fileInput.files.length) {
                 errorDiv.textContent = 'Por favor selecciona un archivo';
-                errorDiv.style.display = 'block';
                 return;
             }
 
@@ -63,23 +59,15 @@
                     body: formData
                 });
 
+                const data = await response.json();
+                
                 if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.error || 'Error al subir el archivo');
+                    throw new Error(data.error || 'Error al procesar el archivo');
                 }
 
-                const data = await response.json();
-                resultDiv.innerHTML = `
-                    <h3>Resultados:</h3>
-                    <p>Tipo de sensor: ${data.sensorType}</p>
-                    <p>Total de lecturas: ${data.totalReadings}</p>
-                    <p>Errores encontrados: ${data.errors}</p>
-                    <p>Tasa de error: ${data.errorRate}</p>
-                `;
-                resultDiv.style.display = 'block';
+                resultDiv.textContent = JSON.stringify(data, null, 2);
             } catch (error) {
                 errorDiv.textContent = error.message;
-                errorDiv.style.display = 'block';
             }
         }
     </script>
