@@ -1,5 +1,9 @@
 import multer from 'multer';
 import { parse } from 'papaparse';
+import crypto from 'crypto';
+
+// Almacén en memoria para los reportes
+const reportsCache = new Map();
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -13,6 +17,10 @@ const runMiddleware = (req, res, fn) => {
     });
   });
 };
+
+function generateContentHash(content) {
+  return crypto.createHash('md5').update(content).digest('hex');
+}
 
 function detectDataColumn(headers) {
   try {
@@ -70,7 +78,9 @@ function detectErrors(readings, dataInfo) {
     const numberOfClusters = Math.floor(Math.random() * 4) + 2; // 2-5 clusters
     
     for (let cluster = 0; cluster < numberOfClusters; cluster++) {
+      // Punto de inicio aleatorio para el cluster
       const clusterStart = Math.floor(Math.random() * processedReadings.length);
+      // Tamaño aleatorio del cluster (1-5 errores consecutivos)
       const clusterSize = Math.floor(Math.random() * 5) + 1;
       
       for (let i = 0; i < clusterSize; i++) {
@@ -114,12 +124,15 @@ function detectErrors(readings, dataInfo) {
 
 function generateModifiedCSV(readings, dataInfo, originalHeaders) {
   try {
+    // Añadimos la columna de estado después de la columna de datos
     const dataColumnIndex = originalHeaders.indexOf(dataInfo.column);
     const newHeaders = [...originalHeaders];
     newHeaders.splice(dataColumnIndex + 1, 0, 'Estado');
 
+    // Creamos las líneas del CSV
     const csvLines = [newHeaders.join(';')];
 
+    // Agregamos cada fila con su estado
     readings.forEach(reading => {
       try {
         const rowData = [...Object.values(reading.originalRow)];
@@ -162,7 +175,6 @@ export default async function handler(req, res) {
       return res.status(405).json({ error: 'Método no permitido. Usa POST.' });
     }
 
-    // Procesar el archivo
     await runMiddleware(req, res, upload.single('csvFile'));
 
     if (!req.file) {
@@ -170,9 +182,23 @@ export default async function handler(req, res) {
     }
 
     const csvContent = req.file.buffer.toString('utf-8');
+    const contentHash = generateContentHash(csvContent);
     const returnFormat = req.query.format || 'json';
 
-    // Parsear CSV
+    // Verificar si ya tenemos un reporte para este contenido
+    if (reportsCache.has(contentHash)) {
+      const cachedReport = reportsCache.get(contentHash);
+      
+      if (returnFormat === 'csv') {
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', 'attachment; filename="datos_con_reporte.csv"');
+        return res.status(200).send(cachedReport.csvContent);
+      }
+
+      return res.status(200).json(cachedReport.jsonReport);
+    }
+
+    // Si no existe, procesar el archivo
     const results = await new Promise((resolve, reject) => {
       parse(csvContent, {
         header: true,
@@ -196,14 +222,8 @@ export default async function handler(req, res) {
 
     const { readings: processedReadings, errorRate, errorCount } = detectErrors(results.data, dataInfo);
 
-    if (returnFormat === 'csv') {
-      const modifiedCSV = generateModifiedCSV(processedReadings, dataInfo, headers);
-      res.setHeader('Content-Type', 'text/csv');
-      res.setHeader('Content-Disposition', 'attachment; filename="datos_con_errores.csv"');
-      return res.status(200).send(modifiedCSV);
-    }
-
-    return res.status(200).json({
+    // Generar reporte JSON
+    const jsonReport = {
       sensorType: dataInfo.type,
       totalReadings: processedReadings.length,
       errors: errorCount,
@@ -214,7 +234,24 @@ export default async function handler(req, res) {
         value: reading.value,
         hasError: reading.hasError
       }))
+    };
+
+    // Generar CSV modificado
+    const modifiedCSV = generateModifiedCSV(processedReadings, dataInfo, headers);
+
+    // Guardar ambos formatos en caché
+    reportsCache.set(contentHash, {
+      jsonReport,
+      csvContent: modifiedCSV
     });
+
+    if (returnFormat === 'csv') {
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', 'attachment; filename="datos_con_reporte.csv"');
+      return res.status(200).send(modifiedCSV);
+    }
+
+    return res.status(200).json(jsonReport);
 
   } catch (error) {
     console.error('Error en el handler principal:', error);
