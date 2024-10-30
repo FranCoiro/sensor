@@ -1,84 +1,111 @@
-import express from 'express';
 import multer from 'multer';
 import { parse } from 'papaparse';
+import { promisify } from 'util';
 
-const app = express();
-const upload = multer(); // Utilizamos multer sin especificar carpeta para mantener el archivo en memoria
+// Configurar multer para memoria
+const upload = multer({ storage: multer.memoryStorage() });
 
-// Ruta principal que acepta el archivo CSV
-app.post('/', upload.single('csvFile'), (req, res) => {
-  if (!req.file) {
-    return res.status(400).send('No se ha proporcionado ningún archivo.');
+// Convertir middleware de multer a una promesa
+const runMiddleware = (req, res, fn) => {
+  return new Promise((resolve, reject) => {
+    fn(req, res, (result) => {
+      if (result instanceof Error) {
+        return reject(result);
+      }
+      return resolve(result);
+    });
+  });
+};
+
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+};
+
+export default async function handler(req, res) {
+  // Verificar método HTTP
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Método no permitido. Usa POST.' });
   }
 
-  const csvContent = req.file.buffer.toString('utf-8');
+  try {
+    // Ejecutar el middleware de multer
+    await runMiddleware(req, res, upload.single('csvFile'));
 
-  // Parsear el contenido del archivo CSV
-  parse(csvContent, {
-    header: true,
-    skipEmptyLines: true,
-    complete: (results) => {
-      const readings = results.data;
+    if (!req.file) {
+      return res.status(400).json({ error: 'No se ha proporcionado ningún archivo.' });
+    }
 
-      if (readings.length === 0) {
-        return res.status(400).send('No se encontraron datos válidos en el archivo.');
-      }
+    const csvContent = req.file.buffer.toString('utf-8');
 
-      const headers = Object.keys(readings[0]);
-      console.log("Encabezados detectados:", headers);
-
-      // Buscar columna de temperatura o humedad
-      const temperatureColumn = headers.find(
-        (key) =>
-          key.includes('Temperatura') ||
-          key.includes('Temperature') ||
-          key === 'Temperatura_C'
-      );
-
-      const humidityColumn = headers.find(
-        (key) =>
-          key.includes('Humedad') ||
-          key.includes('Humidity') ||
-          key === 'Humedad_%'
-      );
-
-      if (!temperatureColumn && !humidityColumn) {
-        return res.status(400).send('No se encontró columna de temperatura ni humedad.');
-      }
-
-      const dataInfo = temperatureColumn
-        ? { column: temperatureColumn, type: 'temperatura' }
-        : { column: humidityColumn, type: 'humedad' };
-
-      const processedReadings = readings.map((reading) => {
-        const value = parseFloat(String(reading[dataInfo.column]).replace(',', '.'));
-        return {
-          timestamp: reading.timestamp || reading.Timestamp || reading.TIMESTAMP || Object.values(reading)[0],
-          originalValue: reading[dataInfo.column],
-          value: isNaN(value) ? null : value,
-          hasError: isNaN(value),
-        };
+    // Convertir parse a promesa
+    const parseCSV = (content) => {
+      return new Promise((resolve, reject) => {
+        parse(content, {
+          header: true,
+          skipEmptyLines: true,
+          complete: (results) => resolve(results),
+          error: (error) => reject(error),
+        });
       });
+    };
 
-      const errors = processedReadings.filter((reading) => reading.hasError);
+    const results = await parseCSV(csvContent);
+    const readings = results.data;
 
-      res.json({
-        sensorType: dataInfo.type,
-        totalReadings: processedReadings.length,
-        errors: errors.length,
-        errorRate: ((errors.length / processedReadings.length) * 100).toFixed(2) + '%',
-        data: processedReadings,
-      });
-    },
-    error: (error) => {
-      console.error('Error parseando el archivo:', error.message);
-      res.status(500).send('Error parseando el archivo: ' + error.message);
-    },
-  });
-});
+    if (readings.length === 0) {
+      return res.status(400).json({ error: 'No se encontraron datos válidos en el archivo.' });
+    }
 
-// Iniciar el servidor
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Servidor corriendo en el puerto ${PORT}`);
-});
+    const headers = Object.keys(readings[0]);
+    console.log("Encabezados detectados:", headers);
+
+    // Buscar columna de temperatura o humedad
+    const temperatureColumn = headers.find(
+      (key) =>
+        key.includes('Temperatura') ||
+        key.includes('Temperature') ||
+        key === 'Temperatura_C'
+    );
+    
+    const humidityColumn = headers.find(
+      (key) =>
+        key.includes('Humedad') ||
+        key.includes('Humidity') ||
+        key === 'Humedad_%'
+    );
+
+    if (!temperatureColumn && !humidityColumn) {
+      return res.status(400).json({ error: 'No se encontró columna de temperatura ni humedad.' });
+    }
+
+    const dataInfo = temperatureColumn
+      ? { column: temperatureColumn, type: 'temperatura' }
+      : { column: humidityColumn, type: 'humedad' };
+
+    const processedReadings = readings.map((reading) => {
+      const value = parseFloat(String(reading[dataInfo.column]).replace(',', '.'));
+      return {
+        timestamp: reading.timestamp || reading.Timestamp || reading.TIMESTAMP || Object.values(reading)[0],
+        originalValue: reading[dataInfo.column],
+        value: isNaN(value) ? null : value,
+        hasError: isNaN(value),
+      };
+    });
+
+    const errors = processedReadings.filter((reading) => reading.hasError);
+
+    return res.status(200).json({
+      sensorType: dataInfo.type,
+      totalReadings: processedReadings.length,
+      errors: errors.length,
+      errorRate: ((errors.length / processedReadings.length) * 100).toFixed(2) + '%',
+      data: processedReadings,
+    });
+
+  } catch (error) {
+    console.error('Error procesando el archivo:', error);
+    return res.status(500).json({ error: 'Error procesando el archivo: ' + error.message });
+  }
+}
