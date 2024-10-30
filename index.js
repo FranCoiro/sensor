@@ -12,6 +12,14 @@ const PORT = process.env.PORT || 5000;
 // Habilitamos CORS para evitar restricciones de acceso
 app.use(cors());
 
+// Añadimos encabezados para permitir acceso sin autenticación
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  next();
+});
+
 // Configuración de multer para la carga de archivos
 const upload = multer({ dest: 'uploads/' });
 
