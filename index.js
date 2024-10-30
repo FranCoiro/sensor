@@ -4,12 +4,21 @@ const multer = require('multer');
 const Papa = require('papaparse');
 const fs = require('fs');
 const path = require('path');
+const cors = require('cors');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Habilitamos CORS para evitar restricciones de acceso
+app.use(cors());
+
 // Configuración de multer para la carga de archivos
 const upload = multer({ dest: 'uploads/' });
+
+// Ruta de prueba para comprobar si la API está funcionando
+app.get('/', (req, res) => {
+  res.send('La API está funcionando correctamente.');
+});
 
 // Ruta para subir el archivo CSV
 app.post('/upload', upload.single('file'), (req, res) => {
