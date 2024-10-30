@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Subir CSV</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            border: 2px dashed #ccc;
+            padding: 20px;
+            text-align: center;
+            margin-top: 20px;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            display: none;
+        }
+        .error {
+            color: red;
+            margin-top: 10px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Subir archivo CSV</h2>
+        <input type="file" id="csvFile" accept=".csv">
+        <button onclick="uploadFile()">Subir archivo</button>
+        <div id="error" class="error"></div>
+        <div id="result" class="result"></div>
+    </div>
+
+    <script>
+        async function uploadFile() {
+            const fileInput = document.getElementById('csvFile');
+            const errorDiv = document.getElementById('error');
+            const resultDiv = document.getElementById('result');
+            
+            errorDiv.style.display = 'none';
+            resultDiv.style.display = 'none';
+
+            if (!fileInput.files.length) {
+                errorDiv.textContent = 'Por favor selecciona un archivo';
+                errorDiv.style.display = 'block';
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('csvFile', fileInput.files[0]);
+
+            try {
+                const response = await fetch('/api', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Error al subir el archivo');
+                }
+
+                const data = await response.json();
+                resultDiv.innerHTML = `
+                    <h3>Resultados:</h3>
+                    <p>Tipo de sensor: ${data.sensorType}</p>
+                    <p>Total de lecturas: ${data.totalReadings}</p>
+                    <p>Errores encontrados: ${data.errors}</p>
+                    <p>Tasa de error: ${data.errorRate}</p>
+                `;
+                resultDiv.style.display = 'block';
+            } catch (error) {
+                errorDiv.textContent = error.message;
+                errorDiv.style.display = 'block';
+            }
+        }
+    </script>
+</body>
+</html>
