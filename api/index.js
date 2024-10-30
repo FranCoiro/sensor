@@ -1,6 +1,5 @@
 import multer from 'multer';
 import { parse } from 'papaparse';
-import { promisify } from 'util';
 
 // Configurar multer para memoria
 const upload = multer({ storage: multer.memoryStorage() });
@@ -19,11 +18,26 @@ const runMiddleware = (req, res, fn) => {
 
 export const config = {
   api: {
-    bodyParser: false,
-  },
+    bodyParser: false
+  }
 };
 
 export default async function handler(req, res) {
+  // Habilitar CORS
+  res.setHeader('Access-Control-Allow-Credentials', true);
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
+  );
+
+  // Manejar preflight requests
+  if (req.method === 'OPTIONS') {
+    res.status(200).end();
+    return;
+  }
+
   // Verificar método HTTP
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Método no permitido. Usa POST.' });
@@ -61,7 +75,6 @@ export default async function handler(req, res) {
     const headers = Object.keys(readings[0]);
     console.log("Encabezados detectados:", headers);
 
-    // Buscar columna de temperatura o humedad
     const temperatureColumn = headers.find(
       (key) =>
         key.includes('Temperatura') ||
