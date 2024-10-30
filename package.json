@@ -1,0 +1,14 @@
+{
+  "name": "sensor-api",
+  "version": "1.0.0",
+  "description": "API para analizar datos de sensores a partir de un archivo CSV",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.17.1",
+    "multer": "^1.4.4",
+    "papaparse": "^5.3.0"
+  }
+}
