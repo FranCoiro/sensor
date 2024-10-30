@@ -14,13 +14,21 @@ export default async function handler(req, res) {
       return res.status(400).send('No se ha proporcionado ningún contenido.');
     }
 
+    console.log("Contenido recibido:", content); // Para depurar: verificar contenido recibido
+
     // Parsear el archivo CSV
     parse(content, {
       header: true,
       skipEmptyLines: true,
       complete: (results) => {
         const readings = results.data;
+
+        if (readings.length === 0) {
+          return res.status(400).send('No se encontraron datos válidos en el archivo.');
+        }
+
         const headers = Object.keys(readings[0]);
+        console.log("Encabezados detectados:", headers); // Para depurar: ver qué encabezados detecta
 
         // Buscar columna de temperatura o humedad
         const temperatureColumn = headers.find(
@@ -45,6 +53,8 @@ export default async function handler(req, res) {
           ? { column: temperatureColumn, type: 'temperatura' }
           : { column: humidityColumn, type: 'humedad' };
 
+        console.log("Columna de datos detectada:", dataInfo); // Para depurar: ver qué columna detectó
+
         const processedReadings = readings.map((reading) => {
           const value = parseFloat(String(reading[dataInfo.column]).replace(',', '.'));
           return {
@@ -66,10 +76,12 @@ export default async function handler(req, res) {
         });
       },
       error: (error) => {
+        console.error('Error parseando el archivo:', error.message);
         res.status(500).send('Error parseando el archivo: ' + error.message);
       },
     });
   } catch (error) {
+    console.error('Error al procesar la solicitud:', error.message);
     res.status(500).send('Error al procesar la solicitud: ' + error.message);
   }
 }
