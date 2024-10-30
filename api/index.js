@@ -1,10 +1,8 @@
 import multer from 'multer';
 import { parse } from 'papaparse';
 
-// Configurar multer para memoria
 const upload = multer({ storage: multer.memoryStorage() });
 
-// Convertir middleware de multer a una promesa
 const runMiddleware = (req, res, fn) => {
   return new Promise((resolve, reject) => {
     fn(req, res, (result) => {
@@ -16,7 +14,6 @@ const runMiddleware = (req, res, fn) => {
   });
 };
 
-// Función para detectar la columna de datos
 function detectDataColumn(headers) {
   const temperatureColumn = headers.find(
     (key) =>
@@ -41,32 +38,28 @@ function detectDataColumn(headers) {
   return null;
 }
 
-// Función para detectar y generar errores
 function detectErrors(readings, dataInfo) {
   try {
-    // Procesamos todas las lecturas
     const processedReadings = readings.map(reading => {
       const value = parseFloat(String(reading[dataInfo.column]).replace(',', '.'));
       return {
         timestamp: reading.timestamp || reading.Timestamp || reading.TIMESTAMP || Object.values(reading)[0],
         originalValue: reading[dataInfo.column],
         value: isNaN(value) ? null : value,
-        hasError: false
+        hasError: false,
+        originalRow: reading // Guardamos la fila original completa
       };
     });
 
-    // Generamos un porcentaje aleatorio entre 0% y 10%
     const randomErrorRate = Math.random() * 0.1;
     const numberOfErrors = Math.floor(processedReadings.length * randomErrorRate);
 
-    // Generamos índices aleatorios únicos para los errores
     const errorIndices = new Set();
     while (errorIndices.size < numberOfErrors) {
       const randomIndex = Math.floor(Math.random() * processedReadings.length);
       errorIndices.add(randomIndex);
     }
 
-    // Marcamos los errores en las posiciones seleccionadas
     errorIndices.forEach(index => {
       processedReadings[index].hasError = true;
     });
@@ -82,6 +75,30 @@ function detectErrors(readings, dataInfo) {
   }
 }
 
+function generateModifiedCSV(readings, dataInfo, originalHeaders) {
+  try {
+    // Añadimos la columna de estado después de la columna de datos
+    const dataColumnIndex = originalHeaders.indexOf(dataInfo.column);
+    const newHeaders = [...originalHeaders];
+    newHeaders.splice(dataColumnIndex + 1, 0, 'Estado');
+
+    // Creamos las líneas del CSV
+    const csvLines = [newHeaders.join(';')];
+
+    // Agregamos cada fila con su estado
+    readings.forEach(reading => {
+      const rowData = [...Object.values(reading.originalRow)];
+      rowData.splice(dataColumnIndex + 1, 0, reading.hasError ? 'FALLA' : '');
+      csvLines.push(rowData.join(';'));
+    });
+
+    return csvLines.join('\n');
+  } catch (error) {
+    console.error('Error generando CSV modificado:', error);
+    throw error;
+  }
+}
+
 export const config = {
   api: {
     bodyParser: false
@@ -89,7 +106,6 @@ export const config = {
 };
 
 export default async function handler(req, res) {
-  // Habilitar CORS
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
@@ -115,8 +131,8 @@ export default async function handler(req, res) {
     }
 
     const csvContent = req.file.buffer.toString('utf-8');
+    const returnFormat = req.query.format || 'json'; // Nuevo parámetro para especificar el formato de retorno
 
-    // Parsear el CSV
     const parseCSV = (content) => {
       return new Promise((resolve, reject) => {
         parse(content, {
@@ -137,23 +153,30 @@ export default async function handler(req, res) {
     }
 
     const headers = Object.keys(readings[0]);
-    console.log("Encabezados detectados:", headers);
-
     const dataInfo = detectDataColumn(headers);
+    
     if (!dataInfo) {
       return res.status(400).json({ error: 'No se encontró columna de temperatura ni humedad.' });
     }
 
     const { readings: processedReadings, errorRate, errorCount } = detectErrors(readings, dataInfo);
-    const errorsFound = processedReadings.filter(reading => reading.hasError);
 
+    // Si se solicita CSV, devolvemos el archivo modificado
+    if (returnFormat === 'csv') {
+      const modifiedCSV = generateModifiedCSV(processedReadings, dataInfo, headers);
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', 'attachment; filename="datos_con_errores.csv"');
+      return res.status(200).send(modifiedCSV);
+    }
+
+    // Por defecto, devolvemos JSON
     return res.status(200).json({
       sensorType: dataInfo.type,
       totalReadings: processedReadings.length,
       errors: errorCount,
       errorRate: `${(errorRate * 100).toFixed(2)}%`,
       data: processedReadings,
-      errorReadings: errorsFound
+      errorReadings: processedReadings.filter(reading => reading.hasError)
     });
 
   } catch (error) {
