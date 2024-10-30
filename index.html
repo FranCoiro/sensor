@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test de API de Sensores</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            border: 2px dashed #ccc;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        pre {
+            background: #f5f5f5;
+            padding: 10px;
+            overflow-x: auto;
+        }
+        .error {
+            color: red;
+            margin: 10px 0;
+        }
+        .button-group {
+            margin-top: 10px;
+            display: flex;
+            gap: 10px;
+        }
+        button {
+            padding: 8px 16px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Test de API de Sensores</h2>
+        <input type="file" id="csvFile" accept=".csv">
+        <div class="button-group">
+            <button onclick="uploadFile('json')">Ver Análisis</button>
+            <button onclick="uploadFile('csv')">Descargar CSV con Errores</button>
+        </div>
+        <div id="error" class="error"></div>
+        <pre id="result"></pre>
+    </div>
+
+    <script>
+        async function uploadFile(format) {
+            const fileInput = document.getElementById('csvFile');
+            const errorDiv = document.getElementById('error');
+            const resultDiv = document.getElementById('result');
+            
+            errorDiv.textContent = '';
+            resultDiv.textContent = '';
+
+            if (!fileInput.files.length) {
+                errorDiv.textContent = 'Por favor selecciona un archivo';
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('csvFile', fileInput.files[0]);
+
+            try {
+                const response = await fetch(`/api?format=${format}`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Error al procesar el archivo');
+                }
+
+                if (format === 'csv') {
+                    // Descargar el archivo CSV
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'datos_con_errores.csv';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
+                } else {
+                    // Mostrar el resultado JSON
+                    const data = await response.json();
+                    resultDiv.textContent = JSON.stringify(data, null, 2);
+                }
+            } catch (error) {
+                errorDiv.textContent = error.message;
+            }
+        }
+    </script>
+</body>
+</html>
